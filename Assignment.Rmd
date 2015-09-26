@@ -1,0 +1,121 @@
+---
+title: "Machine Learning Final Assignment"
+author: "TJ Webb"
+date: "September 26, 2015"
+output: html_document
+---
+
+## Introduction
+
+This report will use data recorded using accelerometers placed on six individuals performing barbell lifts both correctly and incorrectly to build a machine learning algorithm to then make predictions on future data sets. 
+
+## Assignment Requirements
+
+> *Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).*
+
+## Loading Packages
+Several packages are required for working with the data and analysis. These packages must be installed to continue.
+```{r message=FALSE, warning=FALSE}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+
+# set a seed
+set.seed(1984)
+```
+
+## Loading and Cleaning Data
+The data will be loaded remotely (so an Internet connection is required to run this analysis) and will be cleaned (see section: Cleaning Data). The data provided is in two groups, Training and Testing. The Training data will be further split into two sub-groups, SubTesting and SubTraining. All work will be done using the SubTraining group, once a method is determined it will be evaluated against the SubTesting group before being run on the Testing group for final report submission.
+```{r}
+# load both datasets into memory, clean up invalid data
+Training <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"), na.strings=c("NA","#DIV/0!",""))
+Testing <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"), na.strings=c("NA","#DIV/0!",""))
+
+# drop columns with no data
+Testing = Testing[,colSums(is.na(Training))==0]
+Training = Training[,colSums(is.na(Training))==0]
+
+# remove Near Zero Variance columns as they won't serve much purpose in our predictions
+Testing = Testing[,-nearZeroVar(Training)]
+Training = Training[,-nearZeroVar(Training)]
+
+# remove some other, "non-useful" variables, such as names and dates.
+Testing = Testing[,-c(1:5)]
+Training = Training[,-c(1:5)]
+
+# create our SubTraining and SubTesting sets (60/40 split)
+inSubTraining = createDataPartition(y=Training$classe, p=0.6, list=FALSE)
+SubTraining = Training[inSubTraining,]
+SubTesting = Training[-inSubTraining,]
+
+```
+
+## Model Evaluations
+Here we'll try to fit multiple models with the SubTraining data. We'll use a confusion matrix on each one to determine the most accurate prediction.
+
+```{r}
+# First check and make sure our `classe` column has the values we expect, a distrabution of values "A", "B", "C", "D", and "E"
+plot(SubTraining$classe)
+# And this plot will show that that is indeed the case.
+```
+
+```{r fig.width=12, fig.height=10}
+# Now we'll create two models and predictions to compare, a Classification Tree and a Random Forrest
+modelFitCT = rpart(classe ~ ., data=SubTraining, method="class")
+modelFitRF = randomForest(classe ~ ., data=SubTraining, method="class")
+predictionCT = predict(modelFitCT, SubTesting, type="class")
+predictionRF = predict(modelFitRF, SubTesting, type="class")
+
+# Here we look at the classication tree plotted out
+rpart.plot(modelFitCT, main="Model 1: Classification Tree", extra=102, under=TRUE, faclen=0)
+
+# Next we'll take a look at the confusion matrix for each
+confusionMatrixCT = confusionMatrix(predictionCT, SubTesting$classe)
+confusionMatrixRF = confusionMatrix(predictionRF, SubTesting$classe)
+confusionMatrixCT
+confusionMatrixRF
+```
+
+## Conclusion
+
+As you can see above, the Random Forest prediction has a much higher accuracy of **`r confusionMatrixRF$overall[1]`** than the Classification Tree accuracy of **`r confusionMatrixCT$overall[1]`**. Therefore we will use the Random Forest prediction to predict our test cases.
+
+## Summary
+Before we began analysis, we used corss validation by splitting our Training data into SubTesting and SubTraining data. We then tried to fit two different types of models, a classification tree and a random forest. As expected the random forest provided a much higher accuracy, which is why it was chosen as the final predictor to compare on the Testing data. The expected out-of-sample error rate (based on 1 - accuracy of our SubTesting data) is `r 1 - confusionMatrixRF$overall[1]` or **`r (1 - confusionMatrixRF$overall[1]) * 100`%**
+
+## Evaluation Submission
+Here we'll use functionality provided by the course to generate prediction files on the Testing data for submission. This code will write new files to the current working directory.
+
+```{r}
+predictions = predict(modelFitRF, Testing, type="class")
+
+# provided by course instructor
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictions)
+```
+
+## Citations
+Data accessed from the following URL: http://groupware.les.inf.puc-rio.br/har
+
+**WLE dataset**
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. [Qualitative Activity Recognition of Weight Lifting Exercises](http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201). Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+**[Documentation](http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf)**
+
+**Collaborators**
+
+* [Wallace Ugulino](http://groupware.les.inf.puc-rio.br/collaborator.jsf?p1=ugulino) (wugulino at inf dot puc-rio dot br)
+* Eduardo Velloso
+* [Hugo Fuks](http://groupware.les.inf.puc-rio.br/collaborator.jsf?p1=hugo)
+
+**Data licenced under the Creative Commons license (CC BY-SA)**
